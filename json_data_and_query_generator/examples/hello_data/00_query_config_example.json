@@ -20,13 +20,7 @@
         "probability": 1,
         "random": {
             "number_total": [1,1]
-        },
-        "forced": [
-            [
-                "c0",
-                "b1"
-            ]
-        ]
+        }
     },
     "limit" : 5
 }

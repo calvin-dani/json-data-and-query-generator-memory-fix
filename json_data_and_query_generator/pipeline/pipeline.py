@@ -1,6 +1,7 @@
 """
 Driver script that runs the faker data generator and the query generator together
 """
+import random
 import sys
 import multiprocessing
 import os
@@ -92,7 +93,14 @@ def printSummary(args):
 
 def runDataGenerator(args, data_dir):
     DG = DataGenerator(data_dir, os.path.abspath(args.schema_config))
-    schema = DG.generate_schema()
+    schemas = []
+    single_schema = False
+    if single_schema:
+        schema = DG.generate_schema()
+    else:
+        number_of_schemas = (DG.PERCENTAGE_OF_SCHEMA / 100) * DG.NUM_SAMPLES
+        for i in range(number_of_schemas):
+            schemas.append(DG.generate_schema())
 
     temp_dir = os.path.join(data_dir, "temp")
     os.mkdir(temp_dir)
@@ -111,22 +119,42 @@ def runDataGenerator(args, data_dir):
                 args.num_proc
             )
         )
-
-    if int(args.num_proc) == 1:
-        DG.actualGenerator(
-            args.num_proc, schema, os.path.join(temp_dir, temp_filename % 0)
-        )
-    else:
-        for i in range(int(args.num_proc)):
-            p = multiprocessing.Process(
-                target=DG.actualGenerator,
-                args=(args.num_proc, schema, os.path.join(temp_dir, temp_filename % i)),
+    if single_schema:
+        if int(args.num_proc) == 1:
+            DG.actualGenerator(
+                args.num_proc, schema, os.path.join(temp_dir, temp_filename % 0)
             )
-            jobs.append(p)
-            p.start()
+        else:
+            for i in range(int(args.num_proc)):
+                p = multiprocessing.Process(
+                    target=DG.actualGenerator,
+                    args=(args.num_proc, schema, os.path.join(temp_dir, temp_filename % i)),
+                )
+                jobs.append(p)
+                p.start()
 
-        for job in jobs:
-            job.join()
+            for job in jobs:
+                job.join()
+    else:
+        if int(args.num_proc) == 1:
+            DG.actualGeneratorMultiSchema(
+                args.num_proc, schemas, os.path.join(temp_dir, temp_filename % 0)
+            )
+        else:
+            for i in range(int(args.num_proc)):
+                p = multiprocessing.Process(
+                    target=DG.actualGeneratorMultiSchema,
+                    args=(
+                        args.num_proc,
+                        schemas,
+                        os.path.join(temp_dir, temp_filename % i),
+                    ),
+                )
+                jobs.append(p)
+                p.start()
+
+            for job in jobs:
+                job.join()
 
     # merge files
     # merge_command = "sed 1d %s > %s" % (temp_filepath, merged_filepath)

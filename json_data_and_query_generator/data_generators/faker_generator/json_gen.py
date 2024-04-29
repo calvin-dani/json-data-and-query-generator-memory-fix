@@ -2,6 +2,7 @@ import os
 import ast
 import collections.abc
 from datetime import datetime
+import time
 from xml.dom.minidom import Attr
 import numpy as np
 import random
@@ -22,6 +23,19 @@ class DeepFakerSchema(object):
 
     def generate_fake(self, schema, iterations=1):
         result = [self._generate_one_fake(schema) for _ in range(iterations)]
+        return result[0] if len(result) == 1 else result
+    
+    def generate_fake_multischema(self, schemas, iterations=1):
+        counter = 1
+        base_increment = iterations//len(schemas)
+        result = []
+        while schema_idx < len(schemas):
+            result.append(self._generate_one_fake(schemas[schema_idx]))
+            counter %= base_increment
+            if counter == 0:
+                schema_idx += 1
+            counter += 1
+        # result = [self._generate_one_fake(schemas[_%10]) for _ in range(iterations)]
         return result[0] if len(result) == 1 else result
 
     def _generate_one_fake(self, schema):
@@ -131,6 +145,7 @@ class DataGenerator:
         self.LEN_FIELDS = 0
         self.NUM_LEVELS = 0
         self.NUM_SAMPLES = 0
+        self.PERCENTAGE_OF_SCHEMA = 100
 
         if "forcedPaths" in self.configDict.keys() and isinstance(
             self.configDict["forcedPaths"], list
@@ -148,6 +163,9 @@ class DataGenerator:
 
         if "numSamples" in self.configDict.keys():
             self.NUM_SAMPLES = self.configDict["numSamples"]
+
+        if "percentage_of_schema" in self.configDict.keys():
+            self.PERCENTAGE_OF_SCHEMA = self.configDict["percentage_of_schema"]
 
     ######################################################
     # GENERATE SCHEMA
@@ -178,6 +196,17 @@ class DataGenerator:
 
             return iter1(d, [])
 
+        def get_key_name():
+            p = []
+            while True:
+                random_number = random.randint(0, 100)
+                sample_name = ['arr1['+str(random_number)+']',FakerInstanceForKeys.word()]
+                index = random.randrange(len(sample_name))
+                p.append(sample_name[index])
+                if index == 1:
+                    return p
+            
+        
         ARRAY_PATHS = []
 
         for x in iter_paths(schema):
@@ -202,11 +231,17 @@ class DataGenerator:
             del d[oldKey]
 
         DUMMY_FIELD_TYPE = "text"
-
+        DUMMY_FIELD_ARR = ["text","random_number(100)"]
+        manual = True
         while get_depth(schema) < self.NUM_LEVELS:
             p = get_longest_path(schema)
-            p.append(FakerInstanceForKeys.word())
-            valueType = DUMMY_FIELD_TYPE
+            if manual:
+                p.extend(get_key_name())
+                valueType = random.choice(DUMMY_FIELD_ARR)
+            else:
+                p.append(FakerInstanceForKeys.word())
+                valueType = DUMMY_FIELD_TYPE
+
             add_level_and_field(p, valueType, schema)
 
         levels = get_list_of_levels(schema)
@@ -245,9 +280,12 @@ class DataGenerator:
         ######################################################
 
         num_SAMPLES = int(int(self.NUM_SAMPLES) / int(num_PROC))
+        now = datetime.now()
+        timestamp = int(time.mktime(now.timetuple()))
 
         FakerInstanceForValues = fakerModule.Faker()
-        fakerModule.Faker.seed(datetime.now())
+        fakerModule.Faker.seed(timestamp)
+        
 
         faker = DeepFakerSchema(faker=FakerInstanceForValues)
 
@@ -270,6 +308,42 @@ class DataGenerator:
         schema_txt_path = os.path.dirname(self.data_dir)
         with open(os.path.join(schema_txt_path, "schema.txt"), "w") as file1:
             file1.write(str(schema) + "\n")
+
+
+    def actualGeneratorMultiSchema(self, num_PROC, schemas, outputPath):
+        ######################################################
+        # GENERATE DATASET
+        ######################################################
+
+        num_SAMPLES = int(int(self.NUM_SAMPLES) / int(num_PROC))
+        now = datetime.now()
+        timestamp = int(time.mktime(now.timetuple()))
+
+        FakerInstanceForValues = fakerModule.Faker()
+        fakerModule.Faker.seed(timestamp)
+        
+
+        faker = DeepFakerSchema(faker=FakerInstanceForValues)
+
+        start = datetime.now()
+
+        print("### generate sample of size: %s" % num_SAMPLES)
+
+        print("### start faking schema at: %s" % start)
+        data = faker.generate_fake_multischema(schemas, iterations=num_SAMPLES)
+        stop = datetime.now()
+        print("### stop faking schema at: %s" % stop)
+        print("took %s" % (stop - start))
+
+        print("Write data to ", outputPath)
+        with open(outputPath, "w") as file1:
+            file1.writelines([json.dumps(x) + "\n" for x in data])
+
+        # Dont create schema.txt file in the data directory as it conflicts with the
+        # directory structure for benchmark (only json files in this directory)
+        # schema_txt_path = os.path.dirname(self.data_dir)
+        # with open(os.path.join(schema_txt_path, "schema.txt"), "w") as file1:
+        #     file1.write(str(schema) + "\n")
 
     ######################################################
     # ADAPT TO REQUIRED QUERY RESULT
